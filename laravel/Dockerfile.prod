@@ -1,0 +1,46 @@
+#Setar a imagem base que vamos utilizar para construir nossa imagem
+#Também vamos utilizar Multistage Building, vamos nomear a imagem temp de builder
+FROM php:8.2.8-cli as builder
+
+#Setar o diretório onde iremos trabalhar/executar os comandos
+WORKDIR /var/www
+
+#Ajustar o timezone do container para nosso horario brasil
+RUN ln -sf /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
+
+#Atualizar os pacotes
+RUN apt-get update && \
+    apt-get install libzip-dev -y
+
+#Instalar a extension zip para o php
+RUN docker-php-ext-install zip
+
+#Instalar o composer
+RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" && \    
+    php composer-setup.php && \
+    php -r "unlink('composer-setup.php');"
+
+#Instalar o Laravel
+RUN php composer.phar create-project laravel/laravel laravel
+
+#Agora vamos finalmente construir nossa imagem enxuta com base na que utilizamos acima
+FROM php:8.2.8-fpm-alpine
+WORKDIR /var/www
+#LIMPAR A PASTA HTML
+RUN rm -rf /var/www/html
+
+#Copiar o conteudo da imagem buildada para o destino correto
+COPY --from=builder /var/www/laravel .
+
+#Criar usuário e conceder permissao, www-data usuario e www-data grupo ser o dono do conteudo /var/www/*
+RUN chown -R www-data:www-data /var/www 
+
+#Criar link simbólico
+RUN ln -s public html
+
+#Expor a porta padrão do PHP FPM
+EXPOSE 9000
+CMD ["php-fpm"]
+
+
+
